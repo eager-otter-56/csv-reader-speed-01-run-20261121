@@ -1,15 +1,20 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { setFlagsFromString } from 'node:v8';
+// Reads /input/cases.json and writes /output/answers.json.
+// Fast path: transduce the raw bytes in WebAssembly. Fallback: parse
+// and answer case by case with solve.js's run().
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { run, transduceBuffer } from './solve.js';
 
-setFlagsFromString('--no-incremental-marking');
+const inputPath = '/input/cases.json';
+const outputPath = '/output/answers.json';
 
-const { run } = (await import(new URL('./solve.js', import.meta.url).href)) as { run: (input: unknown) => unknown };
-
-const INPUT_DIR = process.env.MAKEFUN_INPUT_DIR ?? '/input';
-const OUTPUT_DIR = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
-
-const cases = JSON.parse(readFileSync(join(INPUT_DIR, 'cases.json'), 'utf8')) as { id: string; input: unknown }[];
-const answers: unknown[] = [];
-for (const c of cases) answers.push(run(c.input));
-writeFileSync(join(OUTPUT_DIR, 'answers.json'), JSON.stringify(answers));
+const raw = readFileSync(inputPath);
+let out: Buffer;
+try {
+  out = transduceBuffer(raw);
+} catch {
+  const cases = JSON.parse(raw.toString('utf8'));
+  const answers = cases.map((c: any) => run(c.input));
+  out = Buffer.from(JSON.stringify(answers), 'utf8');
+}
+mkdirSync('/output', { recursive: true });
+writeFileSync(outputPath, out);
